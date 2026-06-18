@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -22,6 +23,9 @@ async function bootstrap(): Promise<void> {
 
   // Global API prefix (e.g. /api/v1)
   app.setGlobalPrefix(apiPrefix);
+
+  // Cookie parser — required for refresh token cookie
+  app.use(cookieParser());
 
   // Helmet — safe defaults for JSON APIs; disable CSP so Swagger UI loads in dev
   app.use(
