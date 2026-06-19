@@ -13,6 +13,8 @@ import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { Request, Response } from 'express';
 import { UsersService } from '../users/users.service';
+import { CharactersService } from '../characters/characters.service';
+import { HabitsService } from '../habits/habits.service';
 import { RefreshSession, RefreshSessionDocument } from './schemas/refresh-session.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -38,6 +40,8 @@ export class AuthService {
 
   constructor(
     private usersService: UsersService,
+    private charactersService: CharactersService,
+    private habitsService: HabitsService,
     private jwtService: JwtService,
     private configService: ConfigService,
     @InjectModel(RefreshSession.name)
@@ -52,7 +56,6 @@ export class AuthService {
     const bcryptRounds = this.configService.get<number>('bcryptRounds') ?? 12;
     const passwordHash = await bcrypt.hash(dto.password, bcryptRounds);
 
-    // TODO Phase 4: create character and seed default habits after user creation
     const user = await this.usersService.create({
       email: dto.email,
       passwordHash,
@@ -60,8 +63,23 @@ export class AuthService {
       timezone: dto.timezone,
     });
 
+    const userId = (user._id as { toString(): string }).toString();
+
+    // Phase 4: create character and seed habits after user creation.
+    // These are best-effort — user already exists if they throw, but
+    // TODO Phase 5: wrap in a MongoDB transaction once all collections are stable.
+    try {
+      await this.charactersService.createDefault(userId);
+      await this.habitsService.seedDefaults(userId);
+    } catch (err: unknown) {
+      this.logger.error(
+        `Post-registration setup failed for user ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      // Do not surface internal failure to client — user record was created successfully
+    }
+
     return {
-      userId: (user._id as { toString(): string }).toString(),
+      userId,
       email: user.email,
       username: user.username,
     };

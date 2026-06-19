@@ -8,10 +8,14 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshSession, RefreshSessionSchema } from './schemas/refresh-session.schema';
 import { UsersModule } from '../users/users.module';
+import { CharactersModule } from '../characters/characters.module';
+import { HabitsModule } from '../habits/habits.module';
 
 @Module({
   imports: [
     UsersModule,
+    CharactersModule,
+    HabitsModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

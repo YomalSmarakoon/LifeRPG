@@ -7,6 +7,9 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { CharactersModule } from './characters/characters.module';
+import { HabitsModule } from './habits/habits.module';
+import { AchievementsModule } from './achievements/achievements.module';
 
 @Module({
   imports: [
@@ -25,6 +28,9 @@ import { UsersModule } from './users/users.module';
     DatabaseModule,
     HealthModule,
     UsersModule,
+    CharactersModule,
+    HabitsModule,
+    AchievementsModule,
     AuthModule,
   ],
 })
