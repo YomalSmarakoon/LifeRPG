@@ -1,8 +1,9 @@
-import { mockCharacter, mockHeatmapDays } from '../../data/mockData';
+import { useDashboard } from '../../hooks/api/useDashboard';
 import { StreakRow } from '../../components/streaks/StreakRow';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { StatsDisplay } from '../../components/character/StatsDisplay';
+import { mockHeatmapDays } from '../../data/mockData';
 import type { HeatmapDay } from '../../types';
 
 const STREAK_CONFIGS = [
@@ -25,9 +26,11 @@ function calDayClass(day: HeatmapDay): string {
 }
 
 export function ProgressScreen() {
-  const { streaks, stats } = mockCharacter;
+  const { data, isLoading } = useDashboard();
 
-  // Pad the calendar so first day falls on correct weekday (Mon=0)
+  const streaks = data?.character.streaks;
+  const stats = data?.character.stats;
+
   const firstDate = new Date(mockHeatmapDays[0].dateKey);
   const firstDow = (firstDate.getDay() + 6) % 7;
   const pads = Array.from({ length: firstDow });
@@ -56,13 +59,21 @@ export function ProgressScreen() {
       </Card>
 
       <Card title="Active Streaks">
-        {STREAK_CONFIGS.map(({ key, icon, label }) => (
-          <StreakRow key={key} streakKey={key} icon={icon} label={label} streak={streaks[key]} />
-        ))}
+        {isLoading || !streaks ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</div>
+        ) : (
+          STREAK_CONFIGS.map(({ key, icon, label }) => (
+            <StreakRow key={key} streakKey={key} icon={icon} label={label} streak={streaks[key]} />
+          ))
+        )}
       </Card>
 
       <Card title="Character Stats">
-        <StatsDisplay stats={stats} />
+        {isLoading || !stats ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</div>
+        ) : (
+          <StatsDisplay stats={stats} />
+        )}
       </Card>
     </div>
   );

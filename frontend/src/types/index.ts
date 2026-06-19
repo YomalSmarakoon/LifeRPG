@@ -1,7 +1,7 @@
 export interface StreakState {
   current: number;
   shields: number;
-  lastDateKey: string | null;
+  lastDateKey?: string | null;
 }
 
 export interface CharacterStats {
@@ -31,6 +31,8 @@ export interface Character {
   avatarEmoji: string;
   className: string;
   streaks: CharacterStreaks;
+  totalHabitsCompleted?: number;
+  lastActiveDate?: string | null;
 }
 
 export interface User {
@@ -162,4 +164,67 @@ export interface HeatmapDay {
   totalCount: number;
   isFuture: boolean;
   isToday: boolean;
+}
+
+// ─── API response types (Phase 7) ───────────────────────────────────────────
+
+export interface ApiAchievement {
+  code: string;
+  name: string;
+  icon: string;
+  description: string;
+  xpReward: number;
+  category: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  xpAwarded: number | null;
+}
+
+export interface CompleteHabitResponse {
+  habitLogId: string;
+  xpAwarded: number;
+  newTotalXp: number;
+  previousLevel: number;
+  newLevel: number;
+  levelUp: boolean;
+  newRank: string;
+  streakUpdate: { streakKey: string; newCount: number; shieldEarned: boolean } | null;
+  unlockedAchievements: { code: string; name: string; xpAwarded: number }[];
+  weeklyAutoCompleted: { habitId: string; name: string; xpAwarded: number }[];
+  alreadyProcessed?: boolean;
+}
+
+export interface UndoHabitResponse {
+  xpReverted: number;
+  newTotalXp: number;
+  newLevel: number;
+  newRank: string;
+  weeklyAutoNote: string;
+}
+
+export interface ApiDashboardResponse {
+  user: {
+    id: string;
+    email: string;
+    username: string;
+    timezone: string;
+  };
+  character: Character;
+  habits: {
+    daily: DailyHabit[];
+    weekly: WeeklyHabit[];
+  };
+  achievements: {
+    recentUnlocked: { code: string; name: string; icon: string; xpAwarded: number; unlockedAt: string }[];
+    totalUnlocked: number;
+    totalAvailable: number;
+  };
+  xp: {
+    recentEvents: XpEvent[];
+  };
+  today: {
+    dateKey: string;
+    completedDailyCount: number;
+    totalDailyCount: number;
+  };
 }

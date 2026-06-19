@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
+import { setupApiClient } from './lib/api-client';
 import { BottomNav } from './components/layout/BottomNav';
 import { ToastContainer } from './components/ui/Toast';
 import { LevelUpOverlay } from './components/ui/LevelUpOverlay';
@@ -51,6 +53,28 @@ function AuthRoutes() {
 
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const refresh = useAuthStore((s) => s.refresh);
+
+  // Wire api-client auth callbacks (no circular dep — reads state via getState)
+  // Attempt refresh on every app boot to restore session from HttpOnly cookie
+  useEffect(() => {
+    setupApiClient(
+      () => useAuthStore.getState().accessToken,
+      () => useAuthStore.getState().clearAuth(),
+      (token) => useAuthStore.getState().setAccessToken(token),
+    );
+    refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontSize: 32 }}>⚔️</div>
+      </div>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

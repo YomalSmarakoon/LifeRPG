@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useUiStore } from '../../stores/uiStore';
+import { apiClient } from '../../lib/api-client';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/layout/PageHeader';
@@ -8,19 +9,32 @@ import { Modal } from '../../components/ui/Modal';
 
 export function SettingsScreen() {
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const theme = useUiStore((s) => s.theme);
   const toggleTheme = useUiStore((s) => s.toggleTheme);
   const showToast = useUiStore((s) => s.showToast);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  function handleExport() {
-    const data = { exportedAt: new Date().toISOString(), schemaVersion: 'mvp-1.0', note: 'Phase 1 mock export' };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `liferpg-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    showToast('💾 Data exported!');
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const { data } = await apiClient.get('/data/export');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `liferpg-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      showToast('💾 Data exported!');
+    } catch {
+      showToast('Export failed. Try again.', 'error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleLogout() {
+    await logout();
   }
 
   return (
@@ -46,6 +60,11 @@ export function SettingsScreen() {
             <div className="setting-sub">{user?.timezone}</div>
           </div>
         </div>
+        <div style={{ marginTop: 12 }}>
+          <Button variant="danger" fullWidth onClick={handleLogout}>
+            🚪 Log Out
+          </Button>
+        </div>
       </Card>
 
       <Card title="Appearance">
@@ -62,12 +81,14 @@ export function SettingsScreen() {
 
       <Card title="Data Management">
         <div className="data-btns">
-          <Button variant="accent" onClick={handleExport}>📤 Export</Button>
+          <Button variant="accent" onClick={handleExport} disabled={exporting}>
+            {exporting ? '…' : '📤 Export'}
+          </Button>
           <Button variant="danger" onClick={() => setShowResetModal(true)}>🗑️ Reset</Button>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
           Export downloads a full JSON backup of your data.
-          Reset will be available once backend is connected.
+          Account deletion is not yet available.
         </div>
       </Card>
 
@@ -75,7 +96,7 @@ export function SettingsScreen() {
         <div className="setting-row">
           <div>
             <div className="setting-label">Version</div>
-            <div className="setting-sub">MVP Phase 1</div>
+            <div className="setting-sub">MVP Phase 7</div>
           </div>
         </div>
         <div className="setting-row">
@@ -89,12 +110,8 @@ export function SettingsScreen() {
       {showResetModal && (
         <Modal
           title="⚠️ Reset All Data"
-          body="This will permanently delete all your progress, XP, quests, streaks, and achievements. This cannot be undone."
-          extra={
-            <Button variant="danger" fullWidth onClick={() => { setShowResetModal(false); showToast('Reset will be available in Phase 3'); }}>
-              Yes, Reset Everything
-            </Button>
-          }
+          body="Account deletion is not yet available. Contact support to remove your account."
+          extra={null}
           onClose={() => setShowResetModal(false)}
         />
       )}

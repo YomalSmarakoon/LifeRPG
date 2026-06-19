@@ -1,16 +1,29 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useAuthStore } from '../../stores/authStore';
 import { Button } from '../../components/ui/Button';
 
 export function LoginScreen() {
-  const navigate = useNavigate();
+  const login = useAuthStore((s) => s.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Phase 3 will wire this to POST /auth/login
-    navigate('/');
+    setError('');
+    setLoading(true);
+    try {
+      await login(email, password);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'Login failed. Check your credentials.';
+      setError(Array.isArray(msg) ? msg.join(', ') : msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -29,6 +42,7 @@ export function LoginScreen() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
+            required
           />
         </div>
 
@@ -41,11 +55,16 @@ export function LoginScreen() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
+            required
           />
         </div>
 
-        <Button variant="accent" fullWidth type="submit" style={{ marginTop: 8 }}>
-          Log In
+        {error && (
+          <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 8 }}>{error}</div>
+        )}
+
+        <Button variant="accent" fullWidth type="submit" style={{ marginTop: 8 }} disabled={loading}>
+          {loading ? 'Logging in…' : 'Log In'}
         </Button>
       </form>
 
