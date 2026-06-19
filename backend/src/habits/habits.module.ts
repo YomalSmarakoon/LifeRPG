@@ -7,6 +7,7 @@ import { HabitsService } from './habits.service';
 import { HabitsController } from './habits.controller';
 import { XpModule } from '../xp/xp.module';
 import { CharactersModule } from '../characters/characters.module';
+import { AchievementsModule } from '../achievements/achievements.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { UsersModule } from '../users/users.module';
     ]),
     XpModule,
     CharactersModule,
+    AchievementsModule,
     UsersModule,
   ],
   controllers: [HabitsController],

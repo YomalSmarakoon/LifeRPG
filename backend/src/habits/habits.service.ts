@@ -7,13 +7,14 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
-import { Model, Types, Connection } from 'mongoose';
+import { Model, Types, Connection, ClientSession } from 'mongoose';
 import { Habit, HabitDocument } from './schemas/habit.schema';
 import { HabitLog, HabitLogDocument } from './schemas/habit-log.schema';
 import { DAILY_HABITS, WEEKLY_HABITS } from './seeds/default-habits.seed';
 import { XpService } from '../xp/xp.service';
 import { CharactersService } from '../characters/characters.service';
-import { Character } from '../characters/schemas/character.schema';
+import { AchievementsService, UnlockedAchievementResult } from '../achievements/achievements.service';
+import { Character, CharacterDocument } from '../characters/schemas/character.schema';
 import { UsersService } from '../users/users.service';
 import { CreateHabitDto } from './dto/create-habit.dto';
 import { UpdateHabitDto } from './dto/update-habit.dto';
@@ -23,6 +24,25 @@ import { HabitResponseDto } from './dto/habit-response.dto';
 import { HabitLogResponseDto } from './dto/habit-log-response.dto';
 import { toDateKey, toWeekKey, weekStartDateKey } from '../common/utils/date.utils';
 
+export interface WeeklyAutoResult {
+  habitId: string;
+  name: string;
+  xpAwarded: number;
+}
+
+export interface CompleteHabitResponse {
+  habitLogId: string;
+  xpAwarded: number;
+  newTotalXp: number;
+  previousLevel: number;
+  newLevel: number;
+  levelUp: boolean;
+  newRank: string;
+  streakUpdate: { streakKey: string; newCount: number; shieldEarned: boolean } | null;
+  unlockedAchievements: UnlockedAchievementResult[];
+  weeklyAutoCompleted: WeeklyAutoResult[];
+}
+
 @Injectable()
 export class HabitsService {
   private readonly logger = new Logger(HabitsService.name);
@@ -30,14 +50,15 @@ export class HabitsService {
   constructor(
     @InjectModel(Habit.name) private habitModel: Model<HabitDocument>,
     @InjectModel(HabitLog.name) private habitLogModel: Model<HabitLogDocument>,
-    @InjectModel(Character.name) private characterModel: Model<import('../characters/schemas/character.schema').CharacterDocument>,
+    @InjectModel(Character.name) private characterModel: Model<CharacterDocument>,
     @InjectConnection() private connection: Connection,
     private xpService: XpService,
     private charactersService: CharactersService,
+    private achievementsService: AchievementsService,
     private usersService: UsersService,
   ) {}
 
-  // ─── Seeding (Phase 4) ──────────────────────────────────────────────────────
+  // ─── Seeding ─────────────────────────────────────────────────────────────────
 
   async seedDefaults(userId: string): Promise<void> {
     const userObjId = new Types.ObjectId(userId);
@@ -61,7 +82,6 @@ export class HabitsService {
     });
 
     await this.habitModel.insertMany(weeklyDocs);
-
     this.logger.log(`Seeded ${dailyDocs.length} daily + ${weeklyDocs.length} weekly habits for user ${userId}`);
   }
 
@@ -87,39 +107,42 @@ export class HabitsService {
     const currentWeekKey = toWeekKey(now, timezone);
     const weekStartKey = weekStartDateKey(currentWeekKey, timezone);
 
-    // Batch-fetch today's daily logs for this user
     const habitIds = habits.map((h) => h._id);
-    const todayLogs = await this.habitLogModel
-      .find({
-        userId: new Types.ObjectId(userId),
-        habitId: { $in: habitIds },
-        dateKey: todayKey,
-        logType: 'daily',
-        undone: false,
-      })
-      .select('habitId')
-      .exec();
-    const completedTodaySet = new Set(todayLogs.map((l) => l.habitId.toString()));
 
-    // Batch-fetch this week's weekly logs
-    const weekLogs = await this.habitLogModel
-      .find({
-        userId: new Types.ObjectId(userId),
-        habitId: { $in: habitIds },
-        weekKey: currentWeekKey,
-        logType: { $in: ['weekly_manual', 'weekly_auto'] },
-        undone: false,
-      })
-      .select('habitId')
-      .exec();
+    const [todayLogs, weekLogs] = await Promise.all([
+      this.habitLogModel
+        .find({
+          userId: new Types.ObjectId(userId),
+          habitId: { $in: habitIds },
+          dateKey: todayKey,
+          logType: 'daily',
+          undone: false,
+        })
+        .select('habitId')
+        .exec(),
+      this.habitLogModel
+        .find({
+          userId: new Types.ObjectId(userId),
+          habitId: { $in: habitIds },
+          weekKey: currentWeekKey,
+          logType: { $in: ['weekly_manual', 'weekly_auto'] },
+          undone: false,
+        })
+        .select('habitId')
+        .exec(),
+    ]);
+
+    const completedTodaySet = new Set(todayLogs.map((l) => l.habitId.toString()));
     const completedWeekSet = new Set(weekLogs.map((l) => l.habitId.toString()));
 
     const result: HabitResponseDto[] = [];
 
     for (const habit of habits) {
+      const habitIdStr = (habit._id as Types.ObjectId).toString();
+
       if (habit.frequency === 'daily') {
         result.push({
-          id: (habit._id as Types.ObjectId).toString(),
+          id: habitIdStr,
           name: habit.name,
           icon: habit.icon,
           category: habit.category,
@@ -130,11 +153,13 @@ export class HabitsService {
           sortOrder: habit.sortOrder,
           streakKey: habit.streakKey,
           dateKey: todayKey,
-          completedToday: completedTodaySet.has((habit._id as Types.ObjectId).toString()),
+          completedToday: completedTodaySet.has(habitIdStr),
         });
       } else {
         // Weekly habit — compute progress
+        const completedThisWeek = completedWeekSet.has(habitIdStr);
         let progress = 0;
+
         if (habit.weeklyTrackingMode === 'category_count') {
           progress = await this.habitLogModel.countDocuments({
             userId: new Types.ObjectId(userId),
@@ -151,10 +176,13 @@ export class HabitsService {
             logType: 'daily',
             undone: false,
           });
+        } else if (habit.weeklyTrackingMode === 'manual') {
+          // For manual mode: progress = 1 if completed this week, else 0
+          progress = completedThisWeek ? 1 : 0;
         }
 
         result.push({
-          id: (habit._id as Types.ObjectId).toString(),
+          id: habitIdStr,
           name: habit.name,
           icon: habit.icon,
           category: habit.category,
@@ -169,7 +197,7 @@ export class HabitsService {
           weeklyHabitIds: habit.weeklyHabitIds.map((id) => id.toString()),
           weekKey: currentWeekKey,
           progress,
-          completedThisWeek: completedWeekSet.has((habit._id as Types.ObjectId).toString()),
+          completedThisWeek,
         });
       }
     }
@@ -196,19 +224,22 @@ export class HabitsService {
       if (!dto.weeklyTrackingMode) {
         throw new BadRequestException('weeklyTrackingMode is required for weekly habits');
       }
-      if (dto.weeklyTrackingMode === 'category_count' || dto.weeklyTrackingMode === 'habit_count') {
+      if (
+        dto.weeklyTrackingMode === 'category_count' ||
+        dto.weeklyTrackingMode === 'habit_count'
+      ) {
         if (!dto.weeklyTarget) throw new BadRequestException('weeklyTarget is required');
       }
       if (dto.weeklyTrackingMode === 'category_count' && !dto.weeklyCategory) {
         throw new BadRequestException('weeklyCategory is required for category_count mode');
       }
       if (dto.weeklyTrackingMode === 'habit_count') {
-        if (!dto.weeklyHabitIds?.length) throw new BadRequestException('weeklyHabitIds is required for habit_count mode');
+        if (!dto.weeklyHabitIds?.length)
+          throw new BadRequestException('weeklyHabitIds is required for habit_count mode');
       }
     }
 
-    const weeklyHabitObjectIds =
-      dto.weeklyHabitIds?.map((id) => new Types.ObjectId(id)) ?? [];
+    const weeklyHabitObjectIds = dto.weeklyHabitIds?.map((id) => new Types.ObjectId(id)) ?? [];
 
     const habit = await this.habitModel.create({
       userId: userObjId,
@@ -221,7 +252,8 @@ export class HabitsService {
       streakKey: dto.frequency === 'daily' ? (dto.streakKey ?? null) : null,
       weeklyTarget: dto.frequency === 'weekly' ? (dto.weeklyTarget ?? null) : null,
       weeklyTrackingMode: dto.frequency === 'weekly' ? (dto.weeklyTrackingMode ?? null) : null,
-      weeklyCategory: dto.weeklyTrackingMode === 'category_count' ? (dto.weeklyCategory ?? null) : null,
+      weeklyCategory:
+        dto.weeklyTrackingMode === 'category_count' ? (dto.weeklyCategory ?? null) : null,
       weeklyHabitIds: dto.weeklyTrackingMode === 'habit_count' ? weeklyHabitObjectIds : [],
       isActive: true,
       sortOrder: dto.sortOrder ?? 0,
@@ -230,7 +262,11 @@ export class HabitsService {
     return this.toHabitResponse(habit, null, null);
   }
 
-  async updateHabit(habitId: string, userId: string, dto: UpdateHabitDto): Promise<HabitResponseDto> {
+  async updateHabit(
+    habitId: string,
+    userId: string,
+    dto: UpdateHabitDto,
+  ): Promise<HabitResponseDto> {
     const habit = await this.getHabit(habitId, userId);
 
     const update: Record<string, unknown> = {};
@@ -257,11 +293,14 @@ export class HabitsService {
 
   // ─── Completion ──────────────────────────────────────────────────────────────
 
-  async completeHabit(userId: string, habitId: string, dto: CompleteHabitDto) {
+  async completeHabit(
+    userId: string,
+    habitId: string,
+    dto: CompleteHabitDto,
+  ): Promise<CompleteHabitResponse> {
     const userObjId = new Types.ObjectId(userId);
     const habitObjId = new Types.ObjectId(habitId);
 
-    // Pre-transaction reads
     const user = await this.usersService.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
@@ -270,10 +309,7 @@ export class HabitsService {
       .exec();
     if (!habit) throw new NotFoundException('Habit not found');
 
-    if (habit.frequency === 'weekly') {
-      throw new UnprocessableEntityException('Weekly completion will be implemented in Phase 6');
-    }
-
+    // Validate completedAt timing
     const completedAt = dto.completedAt ? new Date(dto.completedAt) : new Date();
     const now = new Date();
     const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1000;
@@ -283,15 +319,16 @@ export class HabitsService {
       throw new UnprocessableEntityException('completedAt must be within the last 48 hours');
     }
     if (completedAt.getTime() - now.getTime() > FIVE_MINUTES) {
-      throw new UnprocessableEntityException('completedAt cannot be more than 5 minutes in the future');
+      throw new UnprocessableEntityException(
+        'completedAt cannot be more than 5 minutes in the future',
+      );
     }
 
     const dateKey = toDateKey(completedAt, user.timezone);
+    const weekKey = toWeekKey(completedAt, user.timezone);
 
     // Idempotency: syncId already exists
-    const existingBySyncId = await this.habitLogModel
-      .findOne({ syncId: dto.syncId })
-      .exec();
+    const existingBySyncId = await this.habitLogModel.findOne({ syncId: dto.syncId }).exec();
     if (existingBySyncId) {
       const char = await this.charactersService.findByUserId(userId);
       return {
@@ -306,10 +343,41 @@ export class HabitsService {
         streakUpdate: null,
         unlockedAchievements: [],
         weeklyAutoCompleted: [],
-      };
+      } as unknown as CompleteHabitResponse;
     }
 
-    // Duplicate check: same user/habit/date already done
+    if (habit.frequency === 'daily') {
+      return this.completeDailyHabit(
+        userObjId, habitObjId, habit, dto, completedAt, dateKey, weekKey, user.timezone,
+      );
+    } else {
+      // Weekly habit
+      if (
+        habit.weeklyTrackingMode === 'category_count' ||
+        habit.weeklyTrackingMode === 'habit_count'
+      ) {
+        throw new UnprocessableEntityException(
+          'Auto-completion habits cannot be manually completed; they complete automatically when the target is reached',
+        );
+      }
+      // manual weekly
+      return this.completeManualWeeklyHabit(
+        userObjId, habitObjId, habit, dto, completedAt, dateKey, weekKey,
+      );
+    }
+  }
+
+  private async completeDailyHabit(
+    userObjId: Types.ObjectId,
+    habitObjId: Types.ObjectId,
+    habit: HabitDocument,
+    dto: CompleteHabitDto,
+    completedAt: Date,
+    dateKey: string,
+    weekKey: string,
+    timezone: string,
+  ): Promise<CompleteHabitResponse> {
+    // Pre-tx duplicate check
     const duplicateExists = await this.habitLogModel.exists({
       userId: userObjId,
       habitId: habitObjId,
@@ -321,16 +389,12 @@ export class HabitsService {
       throw new ConflictException('Already completed this habit today');
     }
 
-    const character = await this.charactersService.findByUserId(userId);
-    if (!character) throw new NotFoundException('Character not found');
-
-    // Transaction
     const session = await this.connection.startSession();
     try {
-      let result: ReturnType<typeof this._buildCompleteResponse> extends Promise<infer R> ? R : never;
+      let response!: CompleteHabitResponse;
 
       await session.withTransaction(async () => {
-        // Step 7: insert daily habit_log
+        // 1. Insert daily habit_log
         const [dailyLog] = await this.habitLogModel.create(
           [
             {
@@ -355,7 +419,7 @@ export class HabitsService {
           { session },
         );
 
-        // Step 8: XP event
+        // 2. XP event for habit completion
         const xpResult = await this.xpService.addXpEvent(
           userObjId,
           habit.xpReward,
@@ -364,67 +428,275 @@ export class HabitsService {
           dailyLog._id as Types.ObjectId,
           session,
         );
+        const levelBefore = xpResult.levelBefore;
 
-        // Step 9: update character counters
+        // 3. Update character counters
         await this.characterModel.findOneAndUpdate(
           { userId: userObjId },
-          {
-            $inc: { totalHabitsCompleted: 1 },
-            lastActiveDate: dateKey,
-          },
+          { $inc: { totalHabitsCompleted: 1 }, lastActiveDate: dateKey },
           { session },
-        );
+        ).exec();
 
-        // Step 10: streak update
-        let streakUpdate: { streakKey: string; newCount: number; shieldEarned: boolean } | null = null;
+        // 4. Streak update
+        let streakUpdate: CompleteHabitResponse['streakUpdate'] = null;
         if (habit.streakKey) {
           const sr = await this.charactersService.updateStreakCache(
-            userObjId,
-            habit.streakKey,
-            dateKey,
-            user.timezone,
-            session,
+            userObjId, habit.streakKey, dateKey, timezone, session,
           );
           streakUpdate = { streakKey: habit.streakKey, ...sr };
         }
 
-        // Step 11: weekly auto-completion check (Phase 6 — skip for now)
-        const weeklyAutoCompleted: Array<{ habitId: string; name: string; xpAwarded: number }> = [];
+        // 5. Weekly auto-completion check
+        const weeklyAutoCompleted = await this.checkAndAwardWeeklyAutoCompletions(
+          userObjId, dateKey, weekKey, timezone, session,
+        );
 
-        result = {
+        // 6. Achievement evaluation (up to 3 passes, reads fresh character each time)
+        const unlockedAchievements = await this.achievementsService.evaluateAndUnlockAchievements(
+          userObjId, session,
+        );
+
+        // 7. Re-read final character state after all XP events
+        const finalChar = await this.characterModel
+          .findOne({ userId: userObjId })
+          .session(session)
+          .exec();
+
+        response = {
           habitLogId: (dailyLog._id as Types.ObjectId).toString(),
           xpAwarded: habit.xpReward,
-          newTotalXp: xpResult.newTotalXp,
-          previousLevel: xpResult.levelBefore,
-          newLevel: xpResult.levelAfter,
-          levelUp: xpResult.levelAfter > xpResult.levelBefore,
-          newRank: xpResult.rankAfter,
+          newTotalXp: finalChar?.totalXp ?? xpResult.newTotalXp,
+          previousLevel: levelBefore,
+          newLevel: finalChar?.level ?? xpResult.levelAfter,
+          levelUp: (finalChar?.level ?? xpResult.levelAfter) > levelBefore,
+          newRank: finalChar?.rank ?? xpResult.rankAfter,
           streakUpdate,
-          unlockedAchievements: [],
+          unlockedAchievements,
           weeklyAutoCompleted,
         };
       });
 
-      return result!;
+      return response;
     } finally {
       await session.endSession();
     }
   }
 
-  // Needed to keep TS happy — actual return type inferred from usage
-  private async _buildCompleteResponse() {
-    return {} as {
-      habitLogId: string;
-      xpAwarded: number;
-      newTotalXp: number;
-      previousLevel: number;
-      newLevel: number;
-      levelUp: boolean;
-      newRank: string;
-      streakUpdate: { streakKey: string; newCount: number; shieldEarned: boolean } | null;
-      unlockedAchievements: unknown[];
-      weeklyAutoCompleted: Array<{ habitId: string; name: string; xpAwarded: number }>;
-    };
+  private async completeManualWeeklyHabit(
+    userObjId: Types.ObjectId,
+    habitObjId: Types.ObjectId,
+    habit: HabitDocument,
+    dto: CompleteHabitDto,
+    completedAt: Date,
+    dateKey: string,
+    weekKey: string,
+  ): Promise<CompleteHabitResponse> {
+    // Pre-tx duplicate check
+    const duplicateExists = await this.habitLogModel.exists({
+      userId: userObjId,
+      habitId: habitObjId,
+      weekKey,
+      undone: false,
+      logType: 'weekly_manual',
+    });
+    if (duplicateExists) {
+      throw new ConflictException('Already completed this weekly habit this week');
+    }
+
+    const session = await this.connection.startSession();
+    try {
+      let response!: CompleteHabitResponse;
+
+      await session.withTransaction(async () => {
+        // 1. Insert weekly_manual habit_log
+        const [weeklyLog] = await this.habitLogModel.create(
+          [
+            {
+              userId: userObjId,
+              habitId: habitObjId,
+              logType: 'weekly_manual',
+              source: 'manual',
+              dateKey,
+              weekKey,
+              completedAt,
+              xpAwarded: habit.xpReward,
+              habitSnapshot: {
+                name: habit.name,
+                category: habit.category,
+                difficulty: habit.difficulty,
+                xpReward: habit.xpReward,
+              },
+              syncId: dto.syncId,
+              undone: false,
+            },
+          ],
+          { session },
+        );
+
+        // 2. XP event
+        const xpResult = await this.xpService.addXpEvent(
+          userObjId,
+          habit.xpReward,
+          'habit_complete',
+          'habit_logs',
+          weeklyLog._id as Types.ObjectId,
+          session,
+        );
+        const levelBefore = xpResult.levelBefore;
+
+        // Weekly completions do NOT increment totalHabitsCompleted
+
+        // 3. Achievement evaluation
+        const unlockedAchievements = await this.achievementsService.evaluateAndUnlockAchievements(
+          userObjId, session,
+        );
+
+        // 4. Re-read final character state
+        const finalChar = await this.characterModel
+          .findOne({ userId: userObjId })
+          .session(session)
+          .exec();
+
+        response = {
+          habitLogId: (weeklyLog._id as Types.ObjectId).toString(),
+          xpAwarded: habit.xpReward,
+          newTotalXp: finalChar?.totalXp ?? xpResult.newTotalXp,
+          previousLevel: levelBefore,
+          newLevel: finalChar?.level ?? xpResult.levelAfter,
+          levelUp: (finalChar?.level ?? xpResult.levelAfter) > levelBefore,
+          newRank: finalChar?.rank ?? xpResult.rankAfter,
+          streakUpdate: null,
+          unlockedAchievements,
+          weeklyAutoCompleted: [],
+        };
+      });
+
+      return response;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  // Step 11 of completion algorithm: check and award weekly auto-completions inside an existing transaction.
+  private async checkAndAwardWeeklyAutoCompletions(
+    userObjId: Types.ObjectId,
+    dateKey: string,
+    weekKey: string,
+    timezone: string,
+    session: ClientSession,
+  ): Promise<WeeklyAutoResult[]> {
+    const weekStartKey = weekStartDateKey(weekKey, timezone);
+    const awarded: WeeklyAutoResult[] = [];
+
+    const weeklyAutoHabits = await this.habitModel
+      .find({
+        userId: userObjId,
+        frequency: 'weekly',
+        isActive: true,
+        weeklyTrackingMode: { $in: ['category_count', 'habit_count'] },
+      })
+      .session(session)
+      .exec();
+
+    for (const weeklyHabit of weeklyAutoHabits) {
+      // Check already completed this week (read from session — sees all in-tx writes)
+      const alreadyDone = await this.habitLogModel
+        .exists({
+          userId: userObjId,
+          habitId: weeklyHabit._id,
+          weekKey,
+          undone: false,
+          logType: { $in: ['weekly_manual', 'weekly_auto'] },
+        })
+        .session(session)
+        .exec();
+      if (alreadyDone) continue;
+
+      // Compute progress
+      let progress = 0;
+      if (weeklyHabit.weeklyTrackingMode === 'category_count') {
+        progress = await this.habitLogModel.countDocuments(
+          {
+            userId: userObjId,
+            'habitSnapshot.category': weeklyHabit.weeklyCategory,
+            dateKey: { $gte: weekStartKey, $lte: dateKey },
+            logType: 'daily',
+            undone: false,
+          },
+          { session },
+        );
+      } else if (weeklyHabit.weeklyTrackingMode === 'habit_count') {
+        // Full week — order of completions doesn't matter for "complete all N habits"
+        progress = await this.habitLogModel.countDocuments(
+          {
+            userId: userObjId,
+            habitId: { $in: weeklyHabit.weeklyHabitIds },
+            dateKey: { $gte: weekStartKey },
+            logType: 'daily',
+            undone: false,
+          },
+          { session },
+        );
+      }
+
+      if (weeklyHabit.weeklyTarget !== null && progress >= weeklyHabit.weeklyTarget) {
+        try {
+          const [autoLog] = await this.habitLogModel.create(
+            [
+              {
+                userId: userObjId,
+                habitId: weeklyHabit._id,
+                logType: 'weekly_auto',
+                source: 'auto',
+                dateKey,
+                weekKey,
+                completedAt: new Date(),
+                xpAwarded: weeklyHabit.xpReward,
+                habitSnapshot: {
+                  name: weeklyHabit.name,
+                  category: weeklyHabit.category,
+                  difficulty: weeklyHabit.difficulty,
+                  xpReward: weeklyHabit.xpReward,
+                },
+                syncId: null,
+                undone: false,
+              },
+            ],
+            { session },
+          );
+
+          await this.xpService.addXpEvent(
+            userObjId,
+            weeklyHabit.xpReward,
+            'habit_complete',
+            'habit_logs',
+            autoLog._id as Types.ObjectId,
+            session,
+          );
+
+          awarded.push({
+            habitId: (weeklyHabit._id as Types.ObjectId).toString(),
+            name: weeklyHabit.name,
+            xpAwarded: weeklyHabit.xpReward,
+          });
+
+          this.logger.log(`Weekly auto-completion awarded: ${weeklyHabit.name} for user ${userObjId.toString()}`);
+        } catch (err: unknown) {
+          // Duplicate key — race condition: another concurrent request already completed it; skip silently
+          if (
+            typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            (err as { code: number }).code === 11000
+          ) {
+            continue;
+          }
+          throw err;
+        }
+      }
+    }
+
+    return awarded;
   }
 
   // ─── Undo ────────────────────────────────────────────────────────────────────
@@ -459,15 +731,15 @@ export class HabitsService {
 
     const session = await this.connection.startSession();
     try {
-      let xpResult: import('../xp/xp.service').AddXpEventResult;
+      let xpResult!: import('../xp/xp.service').AddXpEventResult;
 
       await session.withTransaction(async () => {
-        // Step 4: mark log as undone
+        // Mark log undone
         await this.habitLogModel
           .findByIdAndUpdate(habitLog._id, { undone: true, undoneAt: new Date() }, { session })
           .exec();
 
-        // Step 5: revert XP
+        // Revert XP
         xpResult = await this.xpService.addXpEvent(
           userObjId,
           -habitLog.xpAwarded,
@@ -477,7 +749,7 @@ export class HabitsService {
           session,
         );
 
-        // Step 6: decrement totalHabitsCompleted
+        // Decrement totalHabitsCompleted (floor 0)
         await this.characterModel.findOneAndUpdate(
           { userId: userObjId },
           [
@@ -492,7 +764,7 @@ export class HabitsService {
           { session },
         ).exec();
 
-        // Step 7: recompute streak if needed
+        // Recompute streak if needed — weekly auto-completions are NOT reversed (MVP rule)
         if (habit.streakKey) {
           await this.charactersService.recomputeStreakFromLogs(
             userObjId,
@@ -506,11 +778,12 @@ export class HabitsService {
       });
 
       return {
-        xpReverted: Math.abs(xpResult!.actualDelta),
-        newTotalXp: xpResult!.newTotalXp,
-        newLevel: xpResult!.levelAfter,
-        newRank: xpResult!.rankAfter,
-        weeklyAutoNote: 'Weekly auto-completions triggered by this habit are not reversed',
+        xpReverted: Math.abs(xpResult.actualDelta),
+        newTotalXp: xpResult.newTotalXp,
+        newLevel: xpResult.levelAfter,
+        newRank: xpResult.rankAfter,
+        weeklyAutoNote:
+          'Weekly auto-completions triggered by this habit are not reversed',
       };
     } finally {
       await session.endSession();
