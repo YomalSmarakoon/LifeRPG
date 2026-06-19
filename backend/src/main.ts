@@ -21,6 +21,12 @@ async function bootstrap(): Promise<void> {
   const swaggerEnabled = configService.get<boolean>('swaggerEnabled') ?? false;
   const nodeEnv = configService.get<string>('nodeEnv') ?? 'development';
 
+  // Trust reverse-proxy headers (X-Forwarded-For, X-Forwarded-Proto) in production.
+  // Required for correct IP logging and secure-cookie detection behind nginx/Caddy/Railway/etc.
+  if (nodeEnv === 'production') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
   // Global API prefix (e.g. /api/v1)
   app.setGlobalPrefix(apiPrefix);
 
@@ -35,7 +41,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  // CORS
+  // CORS — exact origin only; no wildcards in production
   app.enableCors({
     origin: [frontendUrl],
     credentials: true,
@@ -61,7 +67,7 @@ async function bootstrap(): Promise<void> {
   // Swagger — dev only or when SWAGGER_ENABLED=true
   if (swaggerEnabled && nodeEnv !== 'production') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Life RPG API')
+      .setTitle('LifeRPG API')
       .setDescription('Gamified life productivity for software engineers')
       .setVersion('MVP')
       .addBearerAuth(
@@ -79,8 +85,11 @@ async function bootstrap(): Promise<void> {
     logger.log(`Swagger UI → http://localhost:${port}/${apiPrefix}/docs`);
   }
 
+  // Graceful shutdown — allow in-flight requests to drain before process exits
+  app.enableShutdownHooks();
+
   await app.listen(port);
-  logger.log(`Life RPG API running on http://localhost:${port}/${apiPrefix}`);
+  logger.log(`LifeRPG API running on http://localhost:${port}/${apiPrefix}`);
   logger.log(`Environment: ${nodeEnv}`);
 }
 

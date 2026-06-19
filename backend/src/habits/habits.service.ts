@@ -835,6 +835,29 @@ export class HabitsService {
     };
   }
 
+  async getHeatmap(
+    userId: string,
+    from: string,
+    to: string,
+  ): Promise<{ dateKey: string; completedCount: number }[]> {
+    const rows = await this.habitLogModel.aggregate<{ _id: string; count: number }>([
+      {
+        $match: {
+          userId: new Types.ObjectId(userId),
+          logType: 'daily',
+          undone: false,
+          dateKey: { $gte: from, $lte: to },
+        },
+      },
+      {
+        $group: { _id: '$dateKey', count: { $sum: 1 } },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    return rows.map((r) => ({ dateKey: r._id, completedCount: r.count }));
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────────────────
 
   private toHabitResponse(

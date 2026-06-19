@@ -138,4 +138,18 @@ export class HabitsController {
       limit ? parseInt(limit, 10) : 60,
     );
   }
+
+  @Get('history/heatmap')
+  @ApiOperation({ summary: 'Daily completion counts for heatmap (non-undone daily logs)' })
+  @ApiQuery({ name: 'from', required: true, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'to', required: true, description: 'YYYY-MM-DD' })
+  @ApiOkResponse({ description: 'Array of { dateKey, completedCount }' })
+  @ApiUnauthorizedResponse()
+  async getHeatmap(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.habitsService.getHeatmap(user.userId, from ?? '', to ?? '');
+  }
 }
