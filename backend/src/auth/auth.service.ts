@@ -125,7 +125,16 @@ export class AuthService {
 
     await this.createRefreshSession(userId, req, res);
 
-    return { accessToken };
+    return {
+      accessToken,
+      user: {
+        userId,
+        email: user.email,
+        username: user.username,
+        timezone: user.timezone,
+        createdAt: (user as unknown as { createdAt: Date }).createdAt.toISOString(),
+      },
+    };
   }
 
   async refresh(req: Request, res: Response): Promise<{ accessToken: string }> {

@@ -14,6 +14,15 @@ export class RegisterResponseDto {
 export class LoginResponseDto {
   @ApiProperty({ description: '15-minute JWT access token' })
   accessToken!: string;
+
+  @ApiProperty({ description: 'Safe user profile' })
+  user!: {
+    userId: string;
+    email: string;
+    username: string;
+    timezone: string;
+    createdAt: string;
+  };
 }
 
 export class RefreshResponseDto {

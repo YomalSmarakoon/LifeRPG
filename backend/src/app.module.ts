@@ -11,6 +11,8 @@ import { CharactersModule } from './characters/characters.module';
 import { HabitsModule } from './habits/habits.module';
 import { AchievementsModule } from './achievements/achievements.module';
 import { XpModule } from './xp/xp.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { DataExportModule } from './data-export/data-export.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { XpModule } from './xp/xp.module';
     AchievementsModule,
     XpModule,
     AuthModule,
+    DashboardModule,
+    DataExportModule,
   ],
 })
 export class AppModule {}
