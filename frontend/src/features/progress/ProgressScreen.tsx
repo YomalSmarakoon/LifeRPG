@@ -1,9 +1,9 @@
 import { useDashboard } from '../../hooks/api/useDashboard';
+import { useHeatmap } from '../../hooks/api/useHeatmap';
 import { StreakRow } from '../../components/streaks/StreakRow';
 import { Card } from '../../components/ui/Card';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { StatsDisplay } from '../../components/character/StatsDisplay';
-import { mockHeatmapDays } from '../../data/mockData';
 import type { HeatmapDay } from '../../types';
 
 const STREAK_CONFIGS = [
@@ -27,11 +27,12 @@ function calDayClass(day: HeatmapDay): string {
 
 export function ProgressScreen() {
   const { data, isLoading } = useDashboard();
+  const { data: heatmapDays = [] } = useHeatmap();
 
   const streaks = data?.character.streaks;
   const stats = data?.character.stats;
 
-  const firstDate = new Date(mockHeatmapDays[0].dateKey);
+  const firstDate = heatmapDays.length > 0 ? new Date(heatmapDays[0].dateKey) : new Date();
   const firstDow = (firstDate.getDay() + 6) % 7;
   const pads = Array.from({ length: firstDow });
 
@@ -47,7 +48,7 @@ export function ProgressScreen() {
         </div>
         <div className="cal-grid">
           {pads.map((_, i) => <div key={`pad-${i}`} />)}
-          {mockHeatmapDays.map((day) => (
+          {heatmapDays.map((day) => (
             <div key={day.dateKey} className={calDayClass(day)} title={day.dateKey} />
           ))}
         </div>

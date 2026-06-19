@@ -1,11 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
 import { setupApiClient } from './lib/api-client';
+import { registerServiceWorker } from './pwa/registerSW';
 import { BottomNav } from './components/layout/BottomNav';
 import { ToastContainer } from './components/ui/Toast';
 import { LevelUpOverlay } from './components/ui/LevelUpOverlay';
+import { OfflineBanner } from './components/ui/OfflineBanner';
+import { UpdatePrompt } from './components/ui/UpdatePrompt';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { DashboardScreen } from './features/dashboard/DashboardScreen';
@@ -23,11 +26,16 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedApp() {
+function ProtectedApp({ showUpdatePrompt, onDismissUpdate }: {
+  showUpdatePrompt: boolean;
+  onDismissUpdate: () => void;
+}) {
   return (
     <div className="app-shell">
+      <OfflineBanner />
       <LevelUpOverlay />
       <ToastContainer />
+      {showUpdatePrompt && <UpdatePrompt onDismiss={onDismissUpdate} />}
       <Routes>
         <Route path="/"             element={<DashboardScreen />} />
         <Route path="/quests"       element={<QuestsScreen />} />
@@ -55,6 +63,7 @@ export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
   const refresh = useAuthStore((s) => s.refresh);
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
 
   // Wire api-client auth callbacks (no circular dep — reads state via getState)
   // Attempt refresh on every app boot to restore session from HttpOnly cookie
@@ -65,6 +74,7 @@ export function App() {
       (token) => useAuthStore.getState().setAccessToken(token),
     );
     refresh();
+    registerServiceWorker({ onNeedRefresh: () => setShowUpdatePrompt(true) });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -79,7 +89,10 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        {isAuthenticated ? <ProtectedApp /> : <AuthRoutes />}
+        {isAuthenticated
+          ? <ProtectedApp showUpdatePrompt={showUpdatePrompt} onDismissUpdate={() => setShowUpdatePrompt(false)} />
+          : <AuthRoutes />
+        }
       </BrowserRouter>
     </QueryClientProvider>
   );

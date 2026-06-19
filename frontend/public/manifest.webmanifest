@@ -1,6 +1,6 @@
 {
-  "name": "Life RPG",
-  "short_name": "Life RPG",
+  "name": "LifeRPG",
+  "short_name": "LifeRPG",
   "description": "Gamified life productivity for software engineers",
   "start_url": "/",
   "scope": "/",

@@ -498,3 +498,63 @@ a { color: var(--accent2); }
 /* ─── XP FLASH ───────────────────────────────────────────────────── */
 @keyframes xp-flash { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 .xp-flash { animation: xp-flash 0.3s ease; }
+
+/* ─── OFFLINE BANNER ─────────────────────────────────────────────── */
+.offline-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 999;
+  background: var(--warning);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  padding-top: calc(10px + env(safe-area-inset-top));
+  text-align: center;
+  justify-content: center;
+}
+
+/* ─── UPDATE PROMPT ──────────────────────────────────────────────── */
+.update-prompt {
+  position: fixed;
+  bottom: calc(var(--nav-h) + 12px);
+  left: 12px; right: 12px;
+  z-index: 998;
+  background: var(--surface2);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.update-prompt-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.update-btn-reload {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.update-btn-dismiss {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}

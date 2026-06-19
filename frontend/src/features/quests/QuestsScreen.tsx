@@ -8,6 +8,7 @@ import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useUiStore } from '../../stores/uiStore';
+import { useIsOffline } from '../../components/ui/OfflineBanner';
 
 const MOTIVATIONS = [
   'Every quest completed is a step toward your best self.',
@@ -27,6 +28,7 @@ function resetTimer() {
 export function QuestsScreen() {
   const showToast = useUiStore((s) => s.showToast);
   const showLevelUp = useUiStore((s) => s.showLevelUp);
+  const isOffline = useIsOffline();
 
   const { data: habitsData, isLoading } = useHabits();
   const completeMutation = useCompleteHabit();
@@ -44,6 +46,10 @@ export function QuestsScreen() {
 
   function handleToggleDaily(id: string) {
     if (isMutating) return;
+    if (isOffline) {
+      showToast('You are offline. Habit changes require a connection in this MVP.', 'warning');
+      return;
+    }
     const habit = dailyHabits.find((h) => h.id === id);
     if (!habit) return;
 
@@ -93,6 +99,10 @@ export function QuestsScreen() {
 
   function handleToggleWeekly(id: string) {
     if (isMutating) return;
+    if (isOffline) {
+      showToast('You are offline. Habit changes require a connection in this MVP.', 'warning');
+      return;
+    }
     const habit = weeklyHabits.find((h) => h.id === id);
     if (!habit || habit.weeklyTrackingMode !== 'manual' || habit.completedThisWeek) return;
 
