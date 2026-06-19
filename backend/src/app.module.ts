@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { CharactersModule } from './characters/characters.module';
 import { HabitsModule } from './habits/habits.module';
 import { AchievementsModule } from './achievements/achievements.module';
+import { XpModule } from './xp/xp.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { AchievementsModule } from './achievements/achievements.module';
     CharactersModule,
     HabitsModule,
     AchievementsModule,
+    XpModule,
     AuthModule,
   ],
 })
