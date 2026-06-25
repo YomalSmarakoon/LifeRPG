@@ -1,0 +1,101 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LifeRPG — Local production-like stack
+#
+# Usage:
+#   1. cp backend/.env.example backend/.env  (fill in real values)
+#   2. docker compose up --build
+#   3. Wait for MongoDB replica set to initialise (one-time, ~5s after first start)
+#      If habits/auth fail with transaction errors, run the init command below:
+#      docker exec liferpg-mongo mongosh --eval \
+#        "rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]})"
+#   4. Frontend → http://localhost:5173 (or 80 for production build)
+#   5. Backend  → http://localhost:3001/api/v1/health
+#
+# MongoDB transactions require a replica set. This compose file starts MongoDB
+# in single-node replica set mode (rs0). Atlas handles this automatically in
+# production — you only need this setup for local testing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── MongoDB (single-node replica set for transaction support) ────────────────
+  mongo:
+    image: mongo:7
+    container_name: liferpg-mongo
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - liferpg-net
+
+  # ── Replica set initialisation (runs once then exits) ─────────────────────
+  mongo-init:
+    image: mongo:7
+    container_name: liferpg-mongo-init
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    command: >
+      mongosh --host mongo --eval
+      "try { rs.status() } catch(e) {
+        rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]})
+      }"
+    networks:
+      - liferpg-net
+
+  # ── Backend ───────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: liferpg-backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override specific vars for Docker networking
+      MONGODB_URI: mongodb://mongo:27017/liferpg?replicaSet=rs0
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "3001:3001"
+    networks:
+      - liferpg-net
+
+  # ── Frontend (production build served by nginx) ───────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Override at build time: docker compose build --build-arg VITE_API_URL=...
+        VITE_API_URL: http://localhost:3001/api/v1
+    container_name: liferpg-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    networks:
+      - liferpg-net
+
+volumes:
+  mongo-data:
+
+networks:
+  liferpg-net:
+    driver: bridge

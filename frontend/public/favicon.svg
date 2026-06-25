@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#161b22"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <linearGradient id="blade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="42" fill="url(#bg)"/>
+  <!-- Glow -->
+  <ellipse cx="96" cy="96" rx="50" ry="50" fill="#2563eb" opacity="0.08"/>
+  <!-- Sword blade -->
+  <rect x="90" y="22" width="12" height="105" rx="6" fill="url(#blade)"/>
+  <!-- Crossguard -->
+  <rect x="56" y="76" width="80" height="14" rx="7" fill="#3b82f6"/>
+  <!-- Grip -->
+  <rect x="88" y="125" width="16" height="32" rx="5" fill="#7c3aed"/>
+  <!-- Pommel -->
+  <circle cx="96" cy="162" r="10" fill="#6d28d9"/>
+  <!-- Gem at tip -->
+  <circle cx="96" cy="24" r="10" fill="#d97706"/>
+  <circle cx="96" cy="24" r="5" fill="#fbbf24"/>
+  <!-- Stars -->
+  <circle cx="32" cy="40" r="2" fill="#2563eb" opacity="0.6"/>
+  <circle cx="158" cy="55" r="2" fill="#7c3aed" opacity="0.6"/>
+  <circle cx="148" cy="148" r="3" fill="#2563eb" opacity="0.5"/>
+  <circle cx="40" cy="155" r="2" fill="#7c3aed" opacity="0.5"/>
+</svg>
