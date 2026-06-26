@@ -26,7 +26,7 @@ COPY --from=builder --chown=liferpg:liferpg /app/package.json ./package.json
 
 USER liferpg
 
-EXPOSE 3001
+EXPOSE 10000
 
 # NODE_ENV must be set via docker run -e or docker-compose env_file
 CMD ["node", "dist/main"]
