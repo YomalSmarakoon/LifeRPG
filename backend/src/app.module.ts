@@ -3,17 +3,18 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import configuration from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
-import { DatabaseModule } from './database/database.module';
+// import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
-import { CharactersModule } from './characters/characters.module';
-import { HabitsModule } from './habits/habits.module';
-import { AchievementsModule } from './achievements/achievements.module';
-import { XpModule } from './xp/xp.module';
-import { DashboardModule } from './dashboard/dashboard.module';
-import { DataExportModule } from './data-export/data-export.module';
+// import { AuthModule } from './auth/auth.module';
+// import { UsersModule } from './users/users.module';
+// import { CharactersModule } from './characters/characters.module';
+// import { HabitsModule } from './habits/habits.module';
+// import { AchievementsModule } from './achievements/achievements.module';
+// import { XpModule } from './xp/xp.module';
+// import { DashboardModule } from './dashboard/dashboard.module';
+// import { DataExportModule } from './data-export/data-export.module';
 
+// TEMP: DB disabled for Render connectivity test — re-enable all modules after confirming health check passes
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,16 +29,16 @@ import { DataExportModule } from './data-export/data-export.module';
         limit: 100,
       },
     ]),
-    DatabaseModule,
+    // DatabaseModule,
     HealthModule,
-    UsersModule,
-    CharactersModule,
-    HabitsModule,
-    AchievementsModule,
-    XpModule,
-    AuthModule,
-    DashboardModule,
-    DataExportModule,
+    // UsersModule,
+    // CharactersModule,
+    // HabitsModule,
+    // AchievementsModule,
+    // XpModule,
+    // AuthModule,
+    // DashboardModule,
+    // DataExportModule,
   ],
 })
 export class AppModule {}
