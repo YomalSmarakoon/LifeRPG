@@ -88,7 +88,7 @@ async function bootstrap(): Promise<void> {
   // Graceful shutdown — allow in-flight requests to drain before process exits
   app.enableShutdownHooks();
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   logger.log(`LifeRPG API running on http://localhost:${port}/${apiPrefix}`);
   logger.log(`Environment: ${nodeEnv}`);
 }
