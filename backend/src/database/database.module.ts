@@ -16,14 +16,17 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
           serverSelectionTimeoutMS: 5_000,
           heartbeatFrequencyMS: 10_000,
           connectionFactory: (connection: import('mongoose').Connection) => {
-            connection.on('connected', () => {
-              logger.log('MongoDB connected');
-            });
+            // connectionFactory runs after openUri() resolves, so 'connected' has
+            // already fired — log directly instead of listening for it.
+            logger.log('MongoDB connected');
             connection.on('error', (err: Error) => {
               logger.error(`MongoDB connection error: ${err.message}`);
             });
             connection.on('disconnected', () => {
               logger.warn('MongoDB disconnected — will retry');
+            });
+            connection.on('reconnected', () => {
+              logger.log('MongoDB reconnected');
             });
             return connection;
           },
